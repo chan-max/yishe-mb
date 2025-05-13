@@ -1,0 +1,325 @@
+<!doctype html>
+<html>
+
+	<head>
+		<meta charset="utf-8" />
+		<link rel="stylesheet" href="./example.css" />
+	</head>
+
+	<body>
+		<div class="container container--is-interactive"></div>
+		<div class="buttons">
+			<button id="add-circle">add circle</button>
+			<button id="delete-circle">delete circle</button>
+			<button id="random-size">random size</button>
+			<button id="random-target">random target</button>
+			<button id="pin-random">toggle pin</button>
+		</div>
+		<div class="range-container">
+			<label for="damping">damping</label>
+			<input id="damping" type="range" min="0" max="0.05" step="0.001" value="0.025" />
+			<span id="damping-value">0.025</span>
+		</div>
+		<script type="module">
+			import {
+				CirclePacker
+			} from './circlepacker.esm.js';
+
+			const DRAG_THRESOLD = 10;
+
+			const containerEl = document.querySelector('.container');
+			const addButtonEl = document.querySelector('#add-circle');
+			const deleteButtonEl = document.querySelector('#delete-circle');
+			const randomButtonEl = document.querySelector('#random-size');
+			const targetButtonEl = document.querySelector('#random-target');
+			const pinRandomButtonEl = document.querySelector('#pin-random');
+			const dampingInputEl = document.querySelector('#damping');
+			const dampingValueEl = document.querySelector('#damping-value');
+
+			// references to all circle elements
+			const circleEls = {};
+
+			// dimenstions of container
+			const rect = containerEl.getBoundingClientRect();
+			let bounds = {
+				width: rect.width,
+				height: rect.height
+			};
+			let target = {
+				x: bounds.width / 2,
+				y: bounds.height / 2
+			};
+
+			let isDragging = false;
+			let pinnedCircleId = null;
+
+			const circles = [
+				createCircle(),
+				createCircle(),
+				createCircle(),
+				createCircle(),
+				
+				createCircle()
+			];
+
+			const targetEl = createTargetEl();
+
+			const packer = new CirclePacker({
+				bounds,
+				target,
+				circles,
+				onMove: render,
+				collisionPasses: 3,
+				centeringPasses: 2,
+				correctionPasses: 5,
+				noWorker: true,
+				animationLoop: true,
+			});
+
+			addButtonEl.addEventListener('click', addRandomCircle);
+			deleteButtonEl.addEventListener('click', removeRandomCircle);
+			randomButtonEl.addEventListener('click', setRandomBounds);
+			targetButtonEl.addEventListener('click', setRandomTarget);
+			pinRandomButtonEl.addEventListener('click', toggleRandomCirclePin);
+			dampingInputEl.addEventListener('input', setDamping);
+
+			function addRandomCircle() {
+				packer.addCircle(createCircle());
+			}
+
+			// create circle dom object, return circle data
+			function createCircle(x, y, radius) {
+				radius = radius || random(10, 40);
+				x = x || random(radius, bounds.width - radius);
+				y = y || random(radius, bounds.height - radius);
+
+				const diameter = radius * 2;
+				const circleEl = document.createElement('div');
+
+				// need some sort of unique id...
+				const id = 'circle-' + random(0, 1000, true) + '-' + Date.now();
+
+				const circle = {
+					id: id,
+					radius: radius,
+					position: {
+						x: random(radius, bounds.width - radius),
+						y: random(radius, bounds.height - radius)
+					}
+				};
+
+				// create circle el
+
+				circleEl.id = id;
+				circleEl.style.width = diameter + 'px';
+				circleEl.style.height = diameter + 'px';
+				circleEl.style.borderRadius = diameter + 'px';
+				circleEl.classList.add('circle');
+
+				// store position for dragging
+				circleEl.setAttribute('data-x', x);
+				circleEl.setAttribute('data-y', y);
+				circleEl.setAttribute('data-radius', radius);
+
+				// start dragging
+				circleEl.addEventListener('mousedown', function(event) {
+					circlePressed(circleEl, circle, event);
+				});
+
+				containerEl.appendChild(circleEl);
+
+				circleEls[id] = circleEl;
+
+				return circle;
+			}
+
+			function createTargetEl() {
+				const targetEl = document.createElement('div');
+				targetEl.classList.add('target');
+
+				containerEl.appendChild(targetEl);
+
+				return targetEl;
+			}
+
+			function removeRandomCircle() {
+				const ids = Object.keys(circleEls);
+				const idToDelete = ids[random(0, ids.length, true)];
+
+				removeCircle(idToDelete);
+			}
+
+			function setRandomBounds() {
+				bounds = {
+					width: random(200, 500, true),
+					height: random(200, 500, true)
+				};
+
+				containerEl.style.width = bounds.width + 'px';
+				containerEl.style.height = bounds.height + 'px';
+
+				packer.setBounds(bounds);
+
+				// set attraction target to center of new bounds
+				target = {
+					x: bounds.width / 2,
+					y: bounds.height / 2
+				};
+				packer.setTarget(target);
+				packer.update();
+			}
+
+			function removeCircle(id) {
+				packer.removeCircle(id);
+
+				requestAnimationFrame(function() {
+					containerEl.removeChild(circleEls[id]);
+					delete circleEls[id];
+				});
+			}
+
+			function toggleRandomCirclePin() {
+				if (pinnedCircleId) {
+					packer.unpinCircle(pinnedCircleId);
+					circleEls[pinnedCircleId].classList.remove('is-pinned');
+					pinnedCircleId = null;
+				} else {
+					if (circles.length) {
+						const randomCircleIndex = Math.floor(Math.random() * circles.length);
+						const randomCircle = circles[randomCircleIndex];
+
+						pinnedCircleId = randomCircle.id;
+						circleEls[pinnedCircleId].classList.add('is-pinned');
+						packer.pinCircle(randomCircle);
+					}
+				}
+			}
+
+			function setRandomTarget() {
+				target = {
+					x: random(0, bounds.width, true),
+					y: random(0, bounds.height, true)
+				};
+
+				packer.setTarget(target);
+				packer.update();
+			}
+
+			function setDamping() {
+				const damping = parseFloat(dampingInputEl.value);
+				dampingValueEl.textContent = damping.toFixed(4);
+				packer.setDamping(damping);
+			}
+
+			function render(circles) {
+				requestAnimationFrame(function() {
+					for (let id in circles) {
+						const circleEl = circleEls[id];
+
+						if (circleEl) {
+							const circle = circles[id];
+							const x = circle.position.x - circle.radius;
+							const y = circle.position.y - circle.radius;
+
+							// store position for dragging
+							circleEl.setAttribute('data-x', x);
+							circleEl.setAttribute('data-y', y);
+
+							// actually move the circles around
+							circleEl.style.transform = `translateX(${x}px) translateY(${y}px)`;
+							circleEl.classList.add('is-visible');
+						}
+					}
+
+					targetEl.style.transform = `translateX(${target.x}px) translateY(${target.y}px)`
+				});
+			}
+
+			// start and stop dragging
+			function circlePressed(circleEl, circle, event) {
+				const circleStartPos = {
+					x: parseFloat(circleEl.getAttribute('data-x')) + circle.radius,
+					y: parseFloat(circleEl.getAttribute('data-y')) + circle.radius
+				};
+
+				const eventStartPos = {
+					x: event.clientX,
+					y: event.clientY
+				};
+
+				function dragStart() {
+					document.addEventListener('mousemove', dragged);
+					document.addEventListener('mouseup', dragEnd);
+				}
+
+				function dragged(event) {
+					const currentPos = {
+						x: event.clientX,
+						y: event.clientY
+					};
+
+					const delta = {
+						x: currentPos.x - eventStartPos.x,
+						y: currentPos.y - eventStartPos.y
+					};
+
+					// start dragging if mouse moved DRAG_THRESOLD px
+					if (!isDragging &&
+						(Math.abs(delta.x) > DRAG_THRESOLD || Math.abs(delta.y) > DRAG_THRESOLD)
+					) {
+						isDragging = true;
+						packer.dragStart(circle.id);
+					}
+
+					const newPos = {
+						x: circleStartPos.x + delta.x,
+						y: circleStartPos.y + delta.y
+					};
+
+					if (isDragging) {
+						// end dragging if circle is outside the bounds
+						if (
+							newPos.x < circle.radius || newPos.x > bounds.width - circle.radius ||
+							newPos.y < circle.radius || newPos.y > bounds.height - circle.radius
+						) {
+							dragEnd();
+						} else {
+							packer.drag(circle.id, newPos);
+						}
+					}
+				}
+
+				function dragEnd() {
+					isDragging = false;
+					document.removeEventListener('mousemove', dragged);
+					packer.dragEnd(circle.id);
+				}
+
+				if (!isDragging) {
+					dragStart();
+				}
+			}
+
+			function random(min, max, intResult) {
+				if (typeof min !== 'number' && typeof max !== 'number') {
+					min = 0;
+					max = 1;
+				}
+
+				if (typeof max !== 'number') {
+					max = min;
+					min = 0;
+				}
+
+				let result = min + Math.random() * (max - min);
+
+				if (intResult) {
+					result = parseInt(result, 10);
+				}
+
+				return result;
+			}
+		</script>
+	</body>
+
+</html>
