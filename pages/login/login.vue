@@ -1,6 +1,5 @@
 <template>
 	<view class="login-page">
-
 		<!-- 登录表单 -->
 		<view class="login-form">
 			<!-- 			<view style="display: flex;align-items: center;gap: 6px;font-weight:bold;color:#888;">
