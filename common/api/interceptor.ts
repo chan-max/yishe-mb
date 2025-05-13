@@ -30,7 +30,7 @@ export const tokenRequestInterceptor = (request) => {
 export const defaultResponseInterceptors = (response) => {
 
 	if (response?.data?.code === 400) {
-		alert(response.data.message)
+		// alert(response.data.message)
 		return Promise.reject()
 	}
 
@@ -52,6 +52,6 @@ export const defaultResponseInterceptors = (response) => {
 		return response
 	}
 
-	alert(response?.data?.message)
+	// alert(response?.data?.message)
 	throw new Error(response)
 }
